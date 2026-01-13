@@ -39,7 +39,7 @@ const DEFAULT_DATA = {
             id: 1,
             name: 'Заявка на согласование договора',
             description: 'Согласование или изменение договорных документов с контрагентами',
-            url: 'forms/Заявка16.html'
+            url: 'forms/contract-request.html'
         },
         {
             id: 2,
