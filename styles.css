@@ -517,6 +517,27 @@ h1, h2, h3, h4, h5, h6 {
     overflow-x: auto;
 }
 
+.contacts-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.contacts-table th,
+.contacts-table td {
+    font-size: 13px;
+    font-weight: 400;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.contacts-table th {
+    font-weight: 600;
+}
+
+.contacts-actions {
+    white-space: nowrap;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;

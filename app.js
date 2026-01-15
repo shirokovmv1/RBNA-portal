@@ -1983,21 +1983,21 @@ async function renderContacts(containerId = 'contacts-table') {
 
     container.innerHTML = `
         <div class="table-container">
-            <table>
+            <table class="contacts-table">
                 <thead>
                     <tr>
                         <th>ФИО</th>
                         <th>Должность</th>
                         <th>Компания</th>
                         <th>Внутренний номер</th>
-                        <th>Телефон</th>
-                        <th>Email</th>
+                        <th>Контактный телефон</th>
+                        <th>E-mail</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${contacts.map(contact => `
                         <tr data-id="${contact.id}">
-                            <td><strong>${escapeHtml(contact.name)}</strong></td>
+                            <td>${escapeHtml(contact.name)}</td>
                             <td>${escapeHtml(contact.position)}</td>
                             <td>${escapeHtml(contact.company || '')}</td>
                             <td>${escapeHtml(contact.internalNumber || '')}</td>
@@ -2238,19 +2238,42 @@ async function renderAdminContacts() {
     if (!container) return;
 
     const contacts = await dataManager.getContacts();
-    
-    container.innerHTML = contacts.map(contact => `
-        <div class="item-row" data-id="${contact.id}">
-            <div class="item-info">
-                <div class="item-title">${escapeHtml(contact.name)}</div>
-                <div class="item-meta">${escapeHtml(contact.position)} — ${escapeHtml(contact.company || '')} ${escapeHtml(contact.internalNumber || '')}</div>
-            </div>
-            <div class="item-actions">
-                <button class="btn btn-secondary btn-sm" onclick="editContact(${contact.id})">✏️</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteContact(${contact.id})">🗑️</button>
-            </div>
+
+    container.innerHTML = `
+        <div class="table-container">
+            <table class="contacts-table">
+                <thead>
+                    <tr>
+                        <th>ФИО</th>
+                        <th>Должность</th>
+                        <th>Компания</th>
+                        <th>Внутренний номер</th>
+                        <th>Дата рождения</th>
+                        <th>Контактный телефон</th>
+                        <th>E-mail</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${contacts.map(contact => `
+                        <tr data-id="${contact.id}">
+                            <td>${escapeHtml(contact.name)}</td>
+                            <td>${escapeHtml(contact.position)}</td>
+                            <td>${escapeHtml(contact.company || '')}</td>
+                            <td>${escapeHtml(contact.internalNumber || '')}</td>
+                            <td>${escapeHtml(contact.birthDate || '')}</td>
+                            <td>${escapeHtml(contact.phone)}</td>
+                            <td><a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a></td>
+                            <td class="contacts-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="editContact(${contact.id})">✏️</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteContact(${contact.id})">🗑️</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
         </div>
-    `).join('');
+    `;
 }
 
 async function renderAdminFaq() {
@@ -2591,7 +2614,8 @@ async function handleContactsImport(event) {
     if (!file) return;
 
     const text = await file.text();
-    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const normalized = text.replace(/^\uFEFF/, '');
+    const lines = normalized.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (lines.length === 0) {
         alert('CSV файл пуст');
         return;
@@ -2674,7 +2698,8 @@ async function exportContactsCsv() {
         ].join(';'));
     });
 
-    const blob = new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
     downloadBlob(blob, 'contacts.csv');
 }
 
