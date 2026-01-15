@@ -26,6 +26,7 @@ switch ($method) {
         
     case 'POST':
         // Добавить новость
+        requireAuth();
         $news = readData('news');
         $newItem = [
             'id' => time(),
@@ -40,6 +41,7 @@ switch ($method) {
         
     case 'PUT':
         // Обновить новость
+        requireAuth();
         if (!isset($data['id'])) error('ID не указан');
         $news = readData('news');
         foreach ($news as &$item) {
@@ -56,6 +58,7 @@ switch ($method) {
         
     case 'DELETE':
         // Удалить новость
+        requireAuth();
         $id = $_GET['id'] ?? null;
         if (!$id) error('ID не указан');
         $news = readData('news');

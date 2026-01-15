@@ -283,7 +283,7 @@
                     <button class="admin-tab" data-tab="events" onclick="switchAdminTab('events')">📅 События</button>
                     <button class="admin-tab" data-tab="applications" onclick="switchAdminTab('applications')">📋 Заявки</button>
                     <button class="admin-tab" data-tab="contacts" onclick="switchAdminTab('contacts')">👥 Контакты</button>
-                    <button class="admin-tab" data-tab="faq" onclick="switchAdminTab('faq')">❓ FAQ</button>
+                    <button class="admin-tab" data-tab="it-help" onclick="switchAdminTab('it-help')">💻 ИТ помощь</button>
                     <button class="admin-tab" data-tab="settings" onclick="switchAdminTab('settings')">🔧 Настройки</button>
                 </div>
 
@@ -362,8 +362,8 @@
                     </div>
                 </div>
 
-                <!-- FAQ Section -->
-                <div id="section-faq" class="admin-section">
+                <!-- IT Help Section -->
+                <div id="section-it-help" class="admin-section">
                     <div class="card">
                         <div class="card-header">
                             <h2 class="card-title">
@@ -375,6 +375,51 @@
                         <div class="card-body">
                             <div class="item-list" id="admin-faq-list">
                                 <!-- FAQ will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <span class="icon">📚</span>
+                                Управление мануалами
+                            </h2>
+                            <button class="btn btn-primary" onclick="openAddManualModal()">+ Добавить</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="item-list" id="admin-manuals-list">
+                                <!-- Manuals will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <span class="icon">🎫</span>
+                                Категории Help Desk
+                            </h2>
+                            <button class="btn btn-primary" onclick="openAddHelpdeskCategoryModal()">+ Добавить</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="item-list" id="admin-helpdesk-list">
+                                <!-- Categories will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <span class="icon">📞</span>
+                                Контакты ИТ отдела
+                            </h2>
+                            <button class="btn btn-primary" onclick="openAddItContactModal()">+ Добавить</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="item-list" id="admin-it-contacts-list">
+                                <!-- IT contacts will be rendered here -->
                             </div>
                         </div>
                     </div>
@@ -584,6 +629,109 @@
         </div>
     </div>
 
+    <!-- Manual Modal -->
+    <div class="modal-overlay" id="manual-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="manual-modal-title">Добавить мануал</h3>
+                <button class="modal-close" onclick="closeModal('manual-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="manual-form">
+                    <div class="form-group">
+                        <label class="form-label" for="manual-title">Название *</label>
+                        <input type="text" id="manual-title" class="form-input" placeholder="Инструкция по ..." required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="manual-desc">Описание</label>
+                        <input type="text" id="manual-desc" class="form-input" placeholder="Краткое описание">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="manual-url">Ссылка на документ *</label>
+                        <input type="text" id="manual-url" class="form-input" placeholder="manuals/email.pdf или https://..." required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('manual-modal')">Отмена</button>
+                <button class="btn btn-primary" onclick="saveManual()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Helpdesk Category Modal -->
+    <div class="modal-overlay" id="helpdesk-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="helpdesk-modal-title">Добавить категорию</h3>
+                <button class="modal-close" onclick="closeModal('helpdesk-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="helpdesk-form">
+                    <div class="form-group">
+                        <label class="form-label" for="helpdesk-label">Название *</label>
+                        <input type="text" id="helpdesk-label" class="form-input" placeholder="Оборудование (ПК, принтер, монитор)" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="helpdesk-value">Значение *</label>
+                        <input type="text" id="helpdesk-value" class="form-input" placeholder="hardware" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('helpdesk-modal')">Отмена</button>
+                <button class="btn btn-primary" onclick="saveHelpdeskCategory()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- IT Contact Modal -->
+    <div class="modal-overlay" id="it-contact-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="it-contact-modal-title">Добавить контакт</h3>
+                <button class="modal-close" onclick="closeModal('it-contact-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="it-contact-form">
+                    <div class="form-group">
+                        <label class="form-label" for="it-contact-title">Заголовок *</label>
+                        <input type="text" id="it-contact-title" class="form-input" placeholder="Email" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="it-contact-description">Описание</label>
+                        <input type="text" id="it-contact-description" class="form-input" placeholder="Для обращений в IT отдел">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="it-contact-value">Значение *</label>
+                        <input type="text" id="it-contact-value" class="form-input" placeholder="it@company.ru" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="it-contact-link">Ссылка</label>
+                        <input type="text" id="it-contact-link" class="form-input" placeholder="mailto:it@company.ru или tel:+7999...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="it-contact-icon">Иконка</label>
+                        <input type="text" id="it-contact-icon" class="form-input" placeholder="📧">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="it-contact-type">Тип</label>
+                        <select id="it-contact-type" class="form-select">
+                            <option value="email">Email</option>
+                            <option value="phone">Телефон</option>
+                            <option value="address">Адрес</option>
+                            <option value="other">Другое</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('it-contact-modal')">Отмена</button>
+                <button class="btn btn-primary" onclick="saveItContact()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
     <script>
         // ============================================
@@ -655,12 +803,12 @@
             btnEl.disabled = true;
             btnEl.textContent = 'Вход...';
             
-            try {
-                // Попробуем серверную авторизацию
-                if (CONFIG.useServerStorage) {
+            if (CONFIG.useServerStorage) {
+                try {
                     const response = await fetch(CONFIG.apiUrl + '/auth.php?action=login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
                         body: JSON.stringify({ username, password })
                     });
                     
@@ -674,12 +822,18 @@
                         });
                         showAdminPanel(result.user);
                         return;
-                    } else {
-                        throw new Error(result.error || 'Ошибка авторизации');
                     }
+                    
+                    errorEl.textContent = result.error || 'Ошибка авторизации';
+                    errorEl.classList.add('show');
+                } catch (e) {
+                    errorEl.textContent = 'Серверная авторизация недоступна';
+                    errorEl.classList.add('show');
                 }
-            } catch (e) {
-                console.log('Серверная авторизация недоступна, используем локальную');
+                
+                btnEl.disabled = false;
+                btnEl.textContent = 'Войти';
+                return;
             }
             
             // Локальная авторизация (fallback)
@@ -705,7 +859,9 @@
         async function handleLogout() {
             try {
                 if (CONFIG.useServerStorage) {
-                    await fetch(CONFIG.apiUrl + '/auth.php?action=logout');
+                    await fetch(CONFIG.apiUrl + '/auth.php?action=logout', {
+                        credentials: 'same-origin'
+                    });
                 }
             } catch (e) {
                 console.log('Ошибка при выходе:', e);
@@ -751,6 +907,7 @@
                     const response = await fetch(CONFIG.apiUrl + '/auth.php?action=change-password', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
                         body: JSON.stringify({ oldPassword: currentPassword, newPassword })
                     });
                     
@@ -784,10 +941,10 @@
             document.getElementById('change-password-form').reset();
         }
         
-        function handleResetData() {
+        async function handleResetData() {
             if (confirm('Вы уверены? Все данные будут сброшены к значениям по умолчанию. Это действие нельзя отменить!')) {
                 if (confirm('Это последнее предупреждение! Нажмите OK для сброса данных.')) {
-                    dataManager.resetToDefaults();
+                    await dataManager.resetToDefaults();
                     alert('Данные сброшены. Страница будет перезагружена.');
                     location.reload();
                 }

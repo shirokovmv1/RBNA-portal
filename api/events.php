@@ -23,6 +23,7 @@ switch ($method) {
         break;
         
     case 'POST':
+        requireAuth();
         $events = readData('events');
         $newItem = [
             'id' => time(),
@@ -36,6 +37,7 @@ switch ($method) {
         break;
         
     case 'PUT':
+        requireAuth();
         if (!isset($data['id'])) error('ID не указан');
         $events = readData('events');
         foreach ($events as &$item) {
@@ -51,6 +53,7 @@ switch ($method) {
         break;
         
     case 'DELETE':
+        requireAuth();
         $id = $_GET['id'] ?? null;
         if (!$id) error('ID не указан');
         $events = readData('events');

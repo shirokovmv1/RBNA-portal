@@ -1,9 +1,23 @@
 <?php
 // Конфигурация API
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+$host = $scheme . ($_SERVER['HTTP_HOST'] ?? '');
+$allowedOrigins = [$host];
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if ($origin && in_array($origin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Vary: Origin');
+}
+
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Auth-Token');
 
 // Обработка preflight запросов
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -34,6 +48,15 @@ function writeData($file, $data) {
     return file_put_contents($path, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 }
 
+// Функция удаления данных
+function deleteData($file) {
+    $path = DATA_DIR . $file . '.json';
+    if (file_exists($path)) {
+        return unlink($path);
+    }
+    return true;
+}
+
 // Функция ответа
 function respond($data, $code = 200) {
     http_response_code($code);
@@ -44,4 +67,27 @@ function respond($data, $code = 200) {
 // Функция ошибки
 function error($message, $code = 400) {
     respond(['error' => $message], $code);
+}
+
+// Проверка авторизации
+function requireAuth() {
+    if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+        error('Не авторизован', 401);
+    }
+
+    $token = '';
+    if (!empty($_SERVER['HTTP_AUTHORIZATION']) && preg_match('/Bearer\s+(.*)$/i', $_SERVER['HTTP_AUTHORIZATION'], $matches)) {
+        $token = trim($matches[1]);
+    } elseif (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
+        $token = trim($_SERVER['HTTP_X_AUTH_TOKEN']);
+    }
+
+    if (!empty($_SESSION['token'])) {
+        if (!$token) {
+            error('Требуется токен', 401);
+        }
+        if (!hash_equals($_SESSION['token'], $token)) {
+            error('Неверный токен', 401);
+        }
+    }
 }

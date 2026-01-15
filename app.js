@@ -24,20 +24,25 @@ const CONFIG = {
 };
 
 // Автоопределение режима работы
-(function detectMode() {
-    // Если есть папка api и мы на сервере - используем API
-    if (window.location.protocol !== 'file:') {
-        fetch(CONFIG.apiUrl + '/news.php', { method: 'HEAD' })
-            .then(response => {
-                if (response.ok) {
-                    CONFIG.useServerStorage = true;
-                    console.log('🌐 Режим: Серверное хранение (Synology)');
-                }
-            })
-            .catch(() => {
-                console.log('💾 Режим: Локальное хранение (localStorage)');
-            });
+const detectModePromise = (function detectMode() {
+    if (window.location.protocol === 'file:') {
+        return Promise.resolve(false);
     }
+
+    return fetch(CONFIG.apiUrl + '/news.php', { method: 'GET', cache: 'no-store' })
+        .then(response => {
+            if (response.ok) {
+                CONFIG.useServerStorage = true;
+                console.log('🌐 Режим: Серверное хранение (Synology)');
+                return true;
+            }
+            console.log('💾 Режим: Локальное хранение (localStorage)');
+            return false;
+        })
+        .catch(() => {
+            console.log('💾 Режим: Локальное хранение (localStorage)');
+            return false;
+        });
 })();
 
 // Данные по умолчанию
@@ -139,6 +144,44 @@ const DEFAULT_DATA = {
             answer: 'Доступ к общим сетевым папкам предоставляется согласно вашей должности. Для получения дополнительного доступа создайте заявку с указанием необходимых ресурсов и обоснованием.'
         }
     ],
+    helpdeskCategories: [
+        { id: 1, value: 'hardware', label: 'Оборудование (ПК, принтер, монитор)' },
+        { id: 2, value: 'software', label: 'Программное обеспечение' },
+        { id: 3, value: 'network', label: 'Сеть и интернет' },
+        { id: 4, value: 'email', label: 'Электронная почта' },
+        { id: 5, value: 'access', label: 'Доступ и пароли' },
+        { id: 6, value: '1c', label: '1С и учётные системы' },
+        { id: 7, value: 'other', label: 'Другое' }
+    ],
+    itContacts: [
+        {
+            id: 1,
+            type: 'email',
+            icon: '📧',
+            title: 'Email',
+            description: 'Для обращений в IT отдел',
+            value: 'it@bso-cc.ru',
+            link: 'mailto:it@bso-cc.ru'
+        },
+        {
+            id: 2,
+            type: 'phone',
+            icon: '📱',
+            title: 'Телефон',
+            description: 'Для срочных вопросов',
+            value: '+7 (495) 147-55-66',
+            link: 'tel:+74951475566'
+        },
+        {
+            id: 3,
+            type: 'address',
+            icon: '📍',
+            title: 'Адрес офиса',
+            description: 'Москва, Ленинский пр.',
+            value: 'д. 11, стр. 2',
+            link: ''
+        }
+    ],
     manuals: [
         {
             id: 1,
@@ -165,11 +208,17 @@ class ApiClient {
     }
 
     async request(endpoint, method = 'GET', data = null) {
+        const token = getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
         const options = {
             method,
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers,
+            credentials: 'same-origin'
         };
 
         if (data && method !== 'GET') {
@@ -222,6 +271,24 @@ class ApiClient {
     async addFaq(data) { return this.request('faq', 'POST', data); }
     async updateFaq(data) { return this.request('faq', 'PUT', data); }
     async deleteFaq(id) { return this.request('faq', 'DELETE', { id }); }
+
+    // Manuals
+    async getManuals() { return this.request('manuals'); }
+    async addManual(data) { return this.request('manuals', 'POST', data); }
+    async updateManual(data) { return this.request('manuals', 'PUT', data); }
+    async deleteManual(id) { return this.request('manuals', 'DELETE', { id }); }
+
+    // Helpdesk Categories
+    async getHelpdeskCategories() { return this.request('helpdesk'); }
+    async addHelpdeskCategory(data) { return this.request('helpdesk', 'POST', data); }
+    async updateHelpdeskCategory(data) { return this.request('helpdesk', 'PUT', data); }
+    async deleteHelpdeskCategory(id) { return this.request('helpdesk', 'DELETE', { id }); }
+
+    // IT Contacts
+    async getItContacts() { return this.request('it-contacts'); }
+    async addItContact(data) { return this.request('it-contacts', 'POST', data); }
+    async updateItContact(data) { return this.request('it-contacts', 'PUT', data); }
+    async deleteItContact(id) { return this.request('it-contacts', 'DELETE', { id }); }
 }
 
 const api = new ApiClient(CONFIG.apiUrl);
@@ -238,7 +305,16 @@ class DataManager {
     }
 
     init() {
-        if (!localStorage.getItem(this.storageKey)) {
+        const existing = localStorage.getItem(this.storageKey);
+        if (!existing) {
+            localStorage.setItem(this.storageKey, JSON.stringify(DEFAULT_DATA));
+            return;
+        }
+        try {
+            const parsed = JSON.parse(existing);
+            const merged = { ...DEFAULT_DATA, ...parsed };
+            localStorage.setItem(this.storageKey, JSON.stringify(merged));
+        } catch {
             localStorage.setItem(this.storageKey, JSON.stringify(DEFAULT_DATA));
         }
     }
@@ -514,13 +590,25 @@ class DataManager {
     }
 
     // =====================
-    // Manuals (только локально)
+    // Manuals
     // =====================
-    getManuals() {
+    async getManuals() {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.getManuals();
+            } catch {
+                return this.getLocalData().manuals || [];
+            }
+        }
         return this.getLocalData().manuals || [];
     }
 
-    addManual(manual) {
+    async addManual(manual) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.addManual(manual);
+            } catch (e) { console.error(e); }
+        }
         const data = this.getLocalData();
         manual.id = Date.now();
         data.manuals.push(manual);
@@ -528,14 +616,144 @@ class DataManager {
         return manual;
     }
 
-    deleteManual(id) {
+    async updateManual(id, updatedManual) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.updateManual({ id, ...updatedManual });
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        const index = data.manuals.findIndex(m => m.id === id);
+        if (index !== -1) {
+            data.manuals[index] = { ...data.manuals[index], ...updatedManual };
+            this.saveLocalData(data);
+        }
+    }
+
+    async deleteManual(id) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.deleteManual(id);
+            } catch (e) { console.error(e); }
+        }
         const data = this.getLocalData();
         data.manuals = data.manuals.filter(m => m.id !== id);
         this.saveLocalData(data);
     }
 
+    // =====================
+    // Helpdesk Categories
+    // =====================
+    async getHelpdeskCategories() {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.getHelpdeskCategories();
+            } catch {
+                return this.getLocalData().helpdeskCategories || [];
+            }
+        }
+        return this.getLocalData().helpdeskCategories || [];
+    }
+
+    async addHelpdeskCategory(category) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.addHelpdeskCategory(category);
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        category.id = Date.now();
+        data.helpdeskCategories.push(category);
+        this.saveLocalData(data);
+        return category;
+    }
+
+    async updateHelpdeskCategory(id, updatedCategory) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.updateHelpdeskCategory({ id, ...updatedCategory });
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        const index = data.helpdeskCategories.findIndex(c => c.id === id);
+        if (index !== -1) {
+            data.helpdeskCategories[index] = { ...data.helpdeskCategories[index], ...updatedCategory };
+            this.saveLocalData(data);
+        }
+    }
+
+    async deleteHelpdeskCategory(id) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.deleteHelpdeskCategory(id);
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        data.helpdeskCategories = data.helpdeskCategories.filter(c => c.id !== id);
+        this.saveLocalData(data);
+    }
+
+    // =====================
+    // IT Contacts
+    // =====================
+    async getItContacts() {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.getItContacts();
+            } catch {
+                return this.getLocalData().itContacts || [];
+            }
+        }
+        return this.getLocalData().itContacts || [];
+    }
+
+    async addItContact(contact) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.addItContact(contact);
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        contact.id = Date.now();
+        data.itContacts.push(contact);
+        this.saveLocalData(data);
+        return contact;
+    }
+
+    async updateItContact(id, updatedContact) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.updateItContact({ id, ...updatedContact });
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        const index = data.itContacts.findIndex(c => c.id === id);
+        if (index !== -1) {
+            data.itContacts[index] = { ...data.itContacts[index], ...updatedContact };
+            this.saveLocalData(data);
+        }
+    }
+
+    async deleteItContact(id) {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.deleteItContact(id);
+            } catch (e) { console.error(e); }
+        }
+        const data = this.getLocalData();
+        data.itContacts = data.itContacts.filter(c => c.id !== id);
+        this.saveLocalData(data);
+    }
+
     // Reset
-    resetToDefaults() {
+    async resetToDefaults() {
+        if (CONFIG.useServerStorage) {
+            try {
+                return await api.request('reset', 'POST');
+            } catch (e) {
+                console.error(e);
+            }
+        }
         localStorage.setItem(this.storageKey, JSON.stringify(DEFAULT_DATA));
     }
 }
@@ -566,6 +784,44 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function getAuthToken() {
+    try {
+        const raw = localStorage.getItem('bso_admin_auth');
+        const data = raw ? JSON.parse(raw) : null;
+        return data?.token || '';
+    } catch {
+        return '';
+    }
+}
+
+function sanitizeUrl(url) {
+    if (!url) return '';
+    const trimmed = url.trim();
+    try {
+        const parsed = new URL(trimmed, window.location.origin);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            return trimmed;
+        }
+    } catch {
+        // ignore invalid URLs
+    }
+    return '#';
+}
+
+function sanitizeContactHref(href) {
+    if (!href) return '';
+    const trimmed = href.trim();
+    if (trimmed.startsWith('mailto:') || trimmed.startsWith('tel:')) {
+        return trimmed;
+    }
+    return sanitizeUrl(trimmed);
+}
+
+function isSafeUrl(url) {
+    const sanitized = sanitizeUrl(url);
+    return sanitized && sanitized !== '#';
 }
 
 // ============================================
@@ -704,16 +960,19 @@ async function renderApplications(containerId = 'applications-grid') {
         return;
     }
 
-    container.innerHTML = applications.map(app => `
+    container.innerHTML = applications.map(app => {
+        const safeUrl = sanitizeUrl(app.url);
+        return `
         <div class="application-card" data-id="${app.id}">
             <div class="icon">📝</div>
             <h3>${escapeHtml(app.name)}</h3>
             <p>${escapeHtml(app.description)}</p>
-            <a href="${escapeHtml(app.url)}" target="_blank">
+            <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">
                 Открыть форму →
             </a>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // Render Contacts Table
@@ -797,11 +1056,11 @@ function toggleFaq(element) {
 }
 
 // Render Manuals
-function renderManuals(containerId = 'manuals-list') {
+async function renderManuals(containerId = 'manuals-list') {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    const manuals = dataManager.getManuals();
+    const manuals = await dataManager.getManuals();
     
     if (manuals.length === 0) {
         container.innerHTML = `
@@ -813,16 +1072,73 @@ function renderManuals(containerId = 'manuals-list') {
         return;
     }
 
-    container.innerHTML = manuals.map(manual => `
+    container.innerHTML = manuals.map(manual => {
+        const safeUrl = sanitizeUrl(manual.url);
+        return `
         <div class="application-card" data-id="${manual.id}">
             <div class="icon">📖</div>
             <h3>${escapeHtml(manual.title)}</h3>
             <p>${escapeHtml(manual.description)}</p>
-            <a href="${escapeHtml(manual.url)}" target="_blank">
+            <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">
                 Открыть документ →
             </a>
         </div>
-    `).join('');
+    `;
+    }).join('');
+}
+
+// Render Helpdesk Categories
+async function renderHelpdeskCategories(selectId = 'helpdesk-category') {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const categories = await dataManager.getHelpdeskCategories();
+    select.innerHTML = `
+        <option value="">Выберите категорию...</option>
+        ${categories.map(category => `
+            <option value="${escapeHtml(category.value)}">${escapeHtml(category.label)}</option>
+        `).join('')}
+    `;
+}
+
+// Render IT Contacts
+async function renderItContacts(containerId = 'it-contacts-grid') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const contacts = await dataManager.getItContacts();
+
+    if (contacts.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📞</div>
+                <p>Контакты ИТ отдела не указаны</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = contacts.map(contact => {
+        const fallbackLink = contact.type === 'email'
+            ? `mailto:${contact.value}`
+            : contact.type === 'phone'
+                ? `tel:${contact.value}`
+                : '';
+        const link = sanitizeContactHref(contact.link || fallbackLink);
+        const value = escapeHtml(contact.value || '');
+        const content = link
+            ? `<a href="${escapeHtml(link)}">${value}</a>`
+            : `<span style="color: var(--text-muted)">${value}</span>`;
+
+        return `
+            <div class="application-card" data-id="${contact.id}">
+                <div class="icon">${escapeHtml(contact.icon || '📞')}</div>
+                <h3>${escapeHtml(contact.title || '')}</h3>
+                <p>${escapeHtml(contact.description || '')}</p>
+                ${content}
+            </div>
+        `;
+    }).join('');
 }
 
 // ============================================
@@ -860,8 +1176,8 @@ function renderAdminSection(section) {
         case 'contacts':
             renderAdminContacts();
             break;
-        case 'faq':
-            renderAdminFaq();
+        case 'it-help':
+            renderAdminItHelp();
             break;
     }
 }
@@ -963,6 +1279,73 @@ async function renderAdminFaq() {
             </div>
         </div>
     `).join('');
+}
+
+async function renderAdminManuals() {
+    const container = document.getElementById('admin-manuals-list');
+    if (!container) return;
+
+    const manuals = await dataManager.getManuals();
+
+    container.innerHTML = manuals.map(item => `
+        <div class="item-row" data-id="${item.id}">
+            <div class="item-info">
+                <div class="item-title">${escapeHtml(item.title)}</div>
+                <div class="item-meta">${escapeHtml(item.url)}</div>
+            </div>
+            <div class="item-actions">
+                <button class="btn btn-secondary btn-sm" onclick="editManual(${item.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteManual(${item.id})">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function renderAdminHelpdeskCategories() {
+    const container = document.getElementById('admin-helpdesk-list');
+    if (!container) return;
+
+    const categories = await dataManager.getHelpdeskCategories();
+
+    container.innerHTML = categories.map(item => `
+        <div class="item-row" data-id="${item.id}">
+            <div class="item-info">
+                <div class="item-title">${escapeHtml(item.label)}</div>
+                <div class="item-meta">${escapeHtml(item.value)}</div>
+            </div>
+            <div class="item-actions">
+                <button class="btn btn-secondary btn-sm" onclick="editHelpdeskCategory(${item.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteHelpdeskCategory(${item.id})">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function renderAdminItContacts() {
+    const container = document.getElementById('admin-it-contacts-list');
+    if (!container) return;
+
+    const contacts = await dataManager.getItContacts();
+
+    container.innerHTML = contacts.map(item => `
+        <div class="item-row" data-id="${item.id}">
+            <div class="item-info">
+                <div class="item-title">${escapeHtml(item.title)}</div>
+                <div class="item-meta">${escapeHtml(item.value)}</div>
+            </div>
+            <div class="item-actions">
+                <button class="btn btn-secondary btn-sm" onclick="editItContact(${item.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteItContact(${item.id})">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderAdminItHelp() {
+    renderAdminFaq();
+    renderAdminManuals();
+    renderAdminHelpdeskCategories();
+    renderAdminItContacts();
 }
 
 // ============================================
@@ -1101,6 +1484,11 @@ async function saveApplication() {
         return;
     }
 
+    if (!isSafeUrl(url)) {
+        alert('Ссылка должна быть http/https или относительной');
+        return;
+    }
+
     if (currentEditAppId) {
         await dataManager.updateApplication(currentEditAppId, { name, description, url });
     } else {
@@ -1218,6 +1606,173 @@ async function deleteFaq(id) {
     }
 }
 
+// Manuals
+let currentEditManualId = null;
+
+function openAddManualModal() {
+    currentEditManualId = null;
+    document.getElementById('manual-form').reset();
+    document.getElementById('manual-modal-title').textContent = 'Добавить мануал';
+    openModal('manual-modal');
+}
+
+async function editManual(id) {
+    const manual = (await dataManager.getManuals()).find(m => m.id === id);
+    if (!manual) return;
+
+    currentEditManualId = id;
+    document.getElementById('manual-title').value = manual.title;
+    document.getElementById('manual-desc').value = manual.description;
+    document.getElementById('manual-url').value = manual.url;
+    document.getElementById('manual-modal-title').textContent = 'Редактировать мануал';
+    openModal('manual-modal');
+}
+
+async function saveManual() {
+    const title = document.getElementById('manual-title').value.trim();
+    const description = document.getElementById('manual-desc').value.trim();
+    const url = document.getElementById('manual-url').value.trim();
+
+    if (!title || !url) {
+        alert('Заполните название и ссылку');
+        return;
+    }
+
+    if (!isSafeUrl(url)) {
+        alert('Ссылка должна быть http/https или относительной');
+        return;
+    }
+
+    if (currentEditManualId) {
+        await dataManager.updateManual(currentEditManualId, { title, description, url });
+    } else {
+        await dataManager.addManual({ title, description, url });
+    }
+
+    closeModal('manual-modal');
+    renderAdminManuals();
+}
+
+async function deleteManual(id) {
+    if (confirm('Удалить этот мануал?')) {
+        await dataManager.deleteManual(id);
+        renderAdminManuals();
+    }
+}
+
+// Helpdesk Categories
+let currentEditHelpdeskCategoryId = null;
+
+function openAddHelpdeskCategoryModal() {
+    currentEditHelpdeskCategoryId = null;
+    document.getElementById('helpdesk-form').reset();
+    document.getElementById('helpdesk-modal-title').textContent = 'Добавить категорию';
+    openModal('helpdesk-modal');
+}
+
+async function editHelpdeskCategory(id) {
+    const category = (await dataManager.getHelpdeskCategories()).find(c => c.id === id);
+    if (!category) return;
+
+    currentEditHelpdeskCategoryId = id;
+    document.getElementById('helpdesk-label').value = category.label;
+    document.getElementById('helpdesk-value').value = category.value;
+    document.getElementById('helpdesk-modal-title').textContent = 'Редактировать категорию';
+    openModal('helpdesk-modal');
+}
+
+async function saveHelpdeskCategory() {
+    const label = document.getElementById('helpdesk-label').value.trim();
+    const value = document.getElementById('helpdesk-value').value.trim();
+
+    if (!label || !value) {
+        alert('Заполните название и значение');
+        return;
+    }
+
+    if (currentEditHelpdeskCategoryId) {
+        await dataManager.updateHelpdeskCategory(currentEditHelpdeskCategoryId, { label, value });
+    } else {
+        await dataManager.addHelpdeskCategory({ label, value });
+    }
+
+    closeModal('helpdesk-modal');
+    renderAdminHelpdeskCategories();
+    renderHelpdeskCategories();
+}
+
+async function deleteHelpdeskCategory(id) {
+    if (confirm('Удалить эту категорию?')) {
+        await dataManager.deleteHelpdeskCategory(id);
+        renderAdminHelpdeskCategories();
+        renderHelpdeskCategories();
+    }
+}
+
+// IT Contacts
+let currentEditItContactId = null;
+
+function openAddItContactModal() {
+    currentEditItContactId = null;
+    document.getElementById('it-contact-form').reset();
+    document.getElementById('it-contact-modal-title').textContent = 'Добавить контакт';
+    openModal('it-contact-modal');
+}
+
+async function editItContact(id) {
+    const contact = (await dataManager.getItContacts()).find(c => c.id === id);
+    if (!contact) return;
+
+    currentEditItContactId = id;
+    document.getElementById('it-contact-title').value = contact.title;
+    document.getElementById('it-contact-description').value = contact.description;
+    document.getElementById('it-contact-value').value = contact.value;
+    document.getElementById('it-contact-link').value = contact.link || '';
+    document.getElementById('it-contact-icon').value = contact.icon || '';
+    document.getElementById('it-contact-type').value = contact.type || 'other';
+    document.getElementById('it-contact-modal-title').textContent = 'Редактировать контакт';
+    openModal('it-contact-modal');
+}
+
+async function saveItContact() {
+    const title = document.getElementById('it-contact-title').value.trim();
+    const description = document.getElementById('it-contact-description').value.trim();
+    const value = document.getElementById('it-contact-value').value.trim();
+    const link = document.getElementById('it-contact-link').value.trim();
+    const icon = document.getElementById('it-contact-icon').value.trim();
+    const type = document.getElementById('it-contact-type').value;
+
+    if (!title || !value) {
+        alert('Заполните заголовок и значение');
+        return;
+    }
+
+    if (link && sanitizeContactHref(link) === '#') {
+        alert('Ссылка должна быть http/https, mailto: или tel:');
+        return;
+    }
+
+    const payload = { title, description, value, link, icon, type };
+
+    if (currentEditItContactId) {
+        await dataManager.updateItContact(currentEditItContactId, payload);
+    } else {
+        await dataManager.addItContact(payload);
+    }
+
+    closeModal('it-contact-modal');
+    renderAdminItContacts();
+    renderItContacts();
+}
+
+async function deleteItContact(id) {
+    if (confirm('Удалить этот контакт?')) {
+        await dataManager.deleteItContact(id);
+        renderAdminItContacts();
+        renderItContacts();
+    }
+}
+
 // ============================================
 // Helpdesk Form
 // ============================================
@@ -1245,8 +1800,9 @@ function submitHelpdeskRequest(event) {
 // Initialize on DOM Ready
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     updateClock();
+    await detectModePromise;
     
     // Initialize page-specific content
     if (document.getElementById('news-list')) {
@@ -1266,6 +1822,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (document.getElementById('manuals-list')) {
         renderManuals();
+    }
+    if (document.getElementById('helpdesk-category')) {
+        renderHelpdeskCategories();
+    }
+    if (document.getElementById('it-contacts-grid')) {
+        renderItContacts();
     }
     
     // Admin panel
