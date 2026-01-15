@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "name": "Администратор",
+    "role": "admin",
+    "password": "$2y$10$REPLACE_WITH_PASSWORD_HASH"
+  }
+]
