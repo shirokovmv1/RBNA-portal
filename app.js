@@ -1986,7 +1986,12 @@ async function renderContacts(containerId = 'contacts-table') {
             <table class="contacts-table">
                 <thead>
                     <tr>
-                        <th>ФИО</th>
+                        <th class="contacts-name-header">
+                            ФИО
+                            <div class="contacts-search-modal">
+                                <input type="text" id="contacts-search" placeholder="Поиск по ФИО">
+                            </div>
+                        </th>
                         <th>Должность</th>
                         <th>Компания</th>
                         <th>Внутренний номер</th>
@@ -2009,6 +2014,31 @@ async function renderContacts(containerId = 'contacts-table') {
             </table>
         </div>
     `;
+
+    setupContactsSearch(contacts);
+}
+
+function setupContactsSearch(contacts) {
+    const input = document.getElementById('contacts-search');
+    const table = document.querySelector('.contacts-table tbody');
+    if (!input || !table) return;
+
+    const rows = Array.from(table.querySelectorAll('tr'));
+    const getName = (row, index) => contacts[index]?.name?.toLowerCase() || '';
+
+    const applyFilter = () => {
+        const query = input.value.trim().toLowerCase();
+        if (query.length < 3) {
+            rows.forEach(row => { row.style.display = ''; });
+            return;
+        }
+        rows.forEach((row, index) => {
+            const name = getName(row, index);
+            row.style.display = name.includes(query) ? '' : 'none';
+        });
+    };
+
+    input.addEventListener('input', applyFilter);
 }
 
 // Render FAQ

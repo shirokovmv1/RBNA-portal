@@ -538,6 +538,28 @@ h1, h2, h3, h4, h5, h6 {
     white-space: nowrap;
 }
 
+.contacts-name-header {
+    position: relative;
+    min-width: 220px;
+}
+
+.contacts-search-modal {
+    margin-top: 6px;
+    background: #ffffff;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    padding: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.contacts-search-modal input {
+    width: 100%;
+    font-size: 12px;
+    padding: 6px 8px;
+    border: 1px solid #cfd3dc;
+    border-radius: 4px;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
