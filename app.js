@@ -3027,23 +3027,233 @@ async function deleteItContact(id) {
 // Helpdesk Form
 // ============================================
 
-function submitHelpdeskRequest(event) {
-    event.preventDefault();
-    
-    const name = document.getElementById('helpdesk-name').value.trim();
-    const email = document.getElementById('helpdesk-email').value.trim();
-    const category = document.getElementById('helpdesk-category').value;
-    const description = document.getElementById('helpdesk-description').value.trim();
+const HELP_DESK_COUNTER_KEY = 'bso_helpdesk_counter';
 
-    if (!name || !email || !category || !description) {
-        alert('Заполните все поля');
+function formatMoscowDateTime(date) {
+    const formatted = date.toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    return formatted.replace(',', '');
+}
+
+function getMoscowDateParts(date) {
+    const formatter = new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const parts = formatter.formatToParts(date).reduce((acc, part) => {
+        acc[part.type] = part.value;
+        return acc;
+    }, {});
+    return { day: parts.day, month: parts.month, year: parts.year };
+}
+
+function generateLocalRequestNumber() {
+    const now = new Date();
+    const { day, month, year } = getMoscowDateParts(now);
+    const dateKey = `${day}${month}${year}`;
+    let counter = { date: dateKey, seq: 0 };
+
+    try {
+        const raw = localStorage.getItem(HELP_DESK_COUNTER_KEY);
+        if (raw) {
+            counter = JSON.parse(raw);
+        }
+    } catch {
+        // ignore invalid local storage
+    }
+
+    if (counter.date !== dateKey) {
+        counter = { date: dateKey, seq: 0 };
+    }
+    counter.seq += 1;
+    localStorage.setItem(HELP_DESK_COUNTER_KEY, JSON.stringify(counter));
+
+    return `${counter.seq}_${dateKey}`;
+}
+
+function setHelpdeskMetaFields(meta) {
+    const numberInput = document.getElementById('helpdesk-number');
+    const dateInput = document.getElementById('helpdesk-datetime');
+    if (numberInput) numberInput.value = meta.requestNumber || '';
+    if (dateInput) dateInput.value = meta.createdAt || '';
+}
+
+async function getHelpdeskMeta(reserve = false) {
+    if (CONFIG.useServerStorage) {
+        try {
+            const action = reserve ? 'reserve' : 'meta';
+            const response = await fetch(`${CONFIG.apiUrl}/helpdesk.php?action=${action}`, {
+                cache: 'no-store'
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch {
+            // fallback to local
+        }
+    }
+
+    const now = new Date();
+    return {
+        requestNumber: generateLocalRequestNumber(),
+        createdAt: formatMoscowDateTime(now),
+        isLocal: true
+    };
+}
+
+function getHelpdeskFormData() {
+    return {
+        requestNumber: document.getElementById('helpdesk-number')?.value.trim() || '',
+        createdAt: document.getElementById('helpdesk-datetime')?.value.trim() || '',
+        name: document.getElementById('helpdesk-name')?.value.trim() || '',
+        email: document.getElementById('helpdesk-email')?.value.trim() || '',
+        phone: document.getElementById('helpdesk-phone')?.value.trim() || '',
+        category: document.getElementById('helpdesk-category')?.value.trim() || '',
+        anydesk: document.getElementById('helpdesk-anydesk')?.checked ? 'ДА' : 'НЕТ',
+        description: document.getElementById('helpdesk-description')?.value.trim() || ''
+    };
+}
+
+function validateHelpdeskData(data) {
+    if (!data.requestNumber || !data.createdAt) {
+        alert('Номер заявки и дата/время должны быть заполнены автоматически.');
+        return false;
+    }
+    const nameParts = data.name.split(/\s+/).filter(Boolean);
+    if (nameParts.length < 2) {
+        alert('Укажите имя и фамилию сотрудника.');
+        return false;
+    }
+    if (!data.email) {
+        alert('Укажите email сотрудника.');
+        return false;
+    }
+    const phonePattern = /^\+7 \d{3} \d{3} \d{2} \d{2}$/;
+    if (!phonePattern.test(data.phone)) {
+        alert('Телефон должен быть в формате +7 123 456 78 90.');
+        return false;
+    }
+    if (!data.category) {
+        alert('Выберите категорию проблемы.');
+        return false;
+    }
+    if (!data.description) {
+        alert('Опишите проблему.');
+        return false;
+    }
+    return true;
+}
+
+function buildHelpdeskPdfDefinition(data) {
+    return {
+        content: [
+            { text: 'Заявка в Help Desk', style: 'header' },
+            { text: `Номер заявки: ${data.requestNumber}`, style: 'field' },
+            { text: `Дата и время заявки: ${data.createdAt}`, style: 'field' },
+            { text: `ФИО сотрудника: ${data.name}`, style: 'field' },
+            { text: `E-mail сотрудника: ${data.email}`, style: 'field' },
+            { text: `Телефон для связи: ${data.phone}`, style: 'field' },
+            { text: `Категория проблемы: ${data.category}`, style: 'field' },
+            { text: `Any Desk установлен: ${data.anydesk}`, style: 'field' },
+            { text: 'Описание проблемы:', style: 'field' },
+            { text: data.description, style: 'description' }
+        ],
+        styles: {
+            header: { fontSize: 16, bold: true, margin: [0, 0, 0, 10] },
+            field: { fontSize: 12, margin: [0, 0, 0, 6] },
+            description: { fontSize: 12, margin: [0, 4, 0, 0] }
+        },
+        defaultStyle: {
+            font: 'Roboto'
+        }
+    };
+}
+
+async function initHelpdeskForm() {
+    const form = document.getElementById('helpdesk-form');
+    if (!form) return;
+    const meta = await getHelpdeskMeta(false);
+    setHelpdeskMetaFields(meta);
+}
+
+async function saveHelpdeskPdf() {
+    const meta = await getHelpdeskMeta(true);
+    setHelpdeskMetaFields(meta);
+    const data = getHelpdeskFormData();
+    if (!validateHelpdeskData(data)) return;
+
+    const docDefinition = buildHelpdeskPdfDefinition(data);
+    const fileName = `helpdesk_${data.requestNumber}.pdf`;
+    pdfMake.createPdf(docDefinition).download(fileName);
+}
+
+async function sendHelpdeskRequest() {
+    const meta = await getHelpdeskMeta(true);
+    setHelpdeskMetaFields(meta);
+    const data = getHelpdeskFormData();
+    if (!validateHelpdeskData(data)) return;
+
+    if (!CONFIG.useServerStorage) {
+        alert('Серверная отправка недоступна в локальном режиме.');
         return;
     }
 
-    // В реальном приложении здесь был бы AJAX запрос
-    alert(`Заявка отправлена!\n\nИмя: ${name}\nEmail: ${email}\nКатегория: ${category}\n\nМы свяжемся с вами в ближайшее время.`);
-    
-    document.getElementById('helpdesk-form').reset();
+    const sendBtn = document.querySelector('button[onclick="sendHelpdeskRequest()"]');
+    if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Отправка...';
+    }
+
+    const docDefinition = buildHelpdeskPdfDefinition(data);
+    pdfMake.createPdf(docDefinition).getBase64(async (pdfBase64) => {
+        try {
+            const formData = new FormData();
+            formData.append('requestNumber', data.requestNumber);
+            formData.append('createdAt', data.createdAt);
+            formData.append('name', data.name);
+            formData.append('email', data.email);
+            formData.append('phone', data.phone);
+            formData.append('category', data.category);
+            formData.append('anydesk', data.anydesk);
+            formData.append('description', data.description);
+            formData.append('pdfBase64', pdfBase64);
+
+            const fileInput = document.getElementById('helpdesk-attachment');
+            if (fileInput?.files?.[0]) {
+                formData.append('attachment', fileInput.files[0]);
+            }
+
+            const response = await fetch(`${CONFIG.apiUrl}/helpdesk.php?action=submit`, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            });
+
+            const result = await response.json();
+            if (response.ok && result.success) {
+                alert(`Заявка отправлена. Номер: ${result.requestNumber}`);
+                document.getElementById('helpdesk-form').reset();
+                await initHelpdeskForm();
+            } else {
+                alert(result.error || 'Ошибка отправки заявки');
+            }
+        } catch (error) {
+            alert('Ошибка отправки заявки');
+        } finally {
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📤 Отправить заявку';
+            }
+        }
+    });
 }
 
 // ============================================
@@ -3075,6 +3285,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (document.getElementById('helpdesk-category')) {
         renderHelpdeskCategories();
+    }
+    if (document.getElementById('helpdesk-form')) {
+        initHelpdeskForm();
     }
     if (document.getElementById('it-contacts-grid')) {
         renderItContacts();

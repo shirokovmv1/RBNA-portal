@@ -75,30 +75,57 @@
                         </h2>
                     </div>
                     <div class="card-body">
-                        <form id="helpdesk-form" onsubmit="submitHelpdeskRequest(event)">
+                        <form id="helpdesk-form" onsubmit="return false;">
                             <div class="dashboard-grid">
                                 <div class="form-group">
-                                    <label class="form-label" for="helpdesk-name">Ваше имя *</label>
-                                    <input type="text" id="helpdesk-name" class="form-input" placeholder="Иванов Иван Иванович" required>
+                                    <label class="form-label" for="helpdesk-number">Номер заявки *</label>
+                                    <input type="text" id="helpdesk-number" class="form-input" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="helpdesk-datetime">Дата и время заявки *</label>
+                                    <input type="text" id="helpdesk-datetime" class="form-input" readonly>
+                                </div>
+                            </div>
+                            <div class="dashboard-grid">
+                                <div class="form-group">
+                                    <label class="form-label" for="helpdesk-name">ФИО сотрудника *</label>
+                                    <input type="text" id="helpdesk-name" class="form-input" placeholder="Иванов Иван" required>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label" for="helpdesk-email">Email *</label>
                                     <input type="email" id="helpdesk-email" class="form-input" placeholder="ivanov@company.ru" required>
                                 </div>
                             </div>
+                            <div class="dashboard-grid">
+                                <div class="form-group">
+                                    <label class="form-label" for="helpdesk-phone">Телефон для связи *</label>
+                                    <input type="text" id="helpdesk-phone" class="form-input" placeholder="+7 123 456 78 90" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="helpdesk-category">Категория проблемы *</label>
+                                    <select id="helpdesk-category" class="form-select" required>
+                                        <option value="">Выберите категорию...</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="form-group">
-                                <label class="form-label" for="helpdesk-category">Категория проблемы *</label>
-                                <select id="helpdesk-category" class="form-select" required>
-                                    <option value="">Выберите категорию...</option>
-                                </select>
+                                <label class="form-label">
+                                    <input type="checkbox" id="helpdesk-anydesk">
+                                    Установлена программа удаленного доступа Any Desk (ДА/НЕТ)
+                                </label>
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="helpdesk-description">Описание проблемы *</label>
                                 <textarea id="helpdesk-description" class="form-textarea" placeholder="Опишите вашу проблему подробно..." required></textarea>
                             </div>
-                            <button type="submit" class="btn btn-primary">
-                                📤 Отправить заявку
-                            </button>
+                            <div class="form-group">
+                                <label class="form-label" for="helpdesk-attachment">Добавить скрин/файл/картинку</label>
+                                <input type="file" id="helpdesk-attachment" class="form-input">
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="saveHelpdeskPdf()">💾 Сохранить заявку</button>
+                                <button type="button" class="btn btn-primary" onclick="sendHelpdeskRequest()">📤 Отправить заявку</button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -155,6 +182,8 @@
         </main>
     </div>
 
-    <script src="app.js?v=20260115-10"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+    <script src="app.js?v=20260120-1"></script>
 </body>
 </html>

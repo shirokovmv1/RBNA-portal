@@ -649,6 +649,12 @@ td a:hover {
     margin-bottom: 20px;
 }
 
+.form-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
 .form-label {
     display: block;
     font-family: 'Montserrat', Arial, sans-serif;
