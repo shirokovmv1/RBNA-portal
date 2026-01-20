@@ -769,10 +769,14 @@
         // ============================================
         
         const AUTH_KEY = 'bso_admin_auth';
-        const DEFAULT_CREDENTIALS = {
-            username: 'admin',
-            password: 'admin123'
-        };
+        const LOCAL_ADMINS_KEY = 'bso_admin_credentials_list';
+        const LEGACY_ADMIN_KEY = 'bso_admin_credentials';
+        const DEFAULT_ADMINS = [
+            { username: 'mshirokov', password: 'Fr8v!Q2zLp', name: 'Михаил Широков', role: 'admin' },
+            { username: 'afateeva', password: 'mZ4#pKs91t', name: 'Анна Фатеева', role: 'admin' },
+            { username: 'adminit', password: 'Qw7@Ln3vXp', name: 'Администратор ИТ', role: 'admin' },
+            { username: 'skashirtsev', password: 'tR9$gV2cHm', name: 'Сергей Каширцев', role: 'admin' }
+        ];
         
         // Проверка авторизации при загрузке
         document.addEventListener('DOMContentLoaded', () => {
@@ -796,6 +800,46 @@
             } catch {
                 return null;
             }
+        }
+
+        function getLocalAdmins() {
+            const legacy = localStorage.getItem(LEGACY_ADMIN_KEY);
+            if (legacy) {
+                try {
+                    const parsed = JSON.parse(legacy);
+                    if (parsed?.username && parsed?.password) {
+                        const migrated = [{
+                            username: parsed.username,
+                            password: parsed.password,
+                            name: parsed.name || 'Администратор',
+                            role: parsed.role || 'admin'
+                        }];
+                        localStorage.setItem(LOCAL_ADMINS_KEY, JSON.stringify(migrated));
+                        localStorage.removeItem(LEGACY_ADMIN_KEY);
+                        return migrated;
+                    }
+                } catch {
+                    localStorage.removeItem(LEGACY_ADMIN_KEY);
+                }
+            }
+
+            const stored = localStorage.getItem(LOCAL_ADMINS_KEY);
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length) {
+                        return parsed;
+                    }
+                } catch {
+                    localStorage.removeItem(LOCAL_ADMINS_KEY);
+                }
+            }
+
+            return DEFAULT_ADMINS;
+        }
+
+        function saveLocalAdmins(admins) {
+            localStorage.setItem(LOCAL_ADMINS_KEY, JSON.stringify(admins));
         }
         
         function setAuthData(data) {
@@ -867,16 +911,15 @@
             }
             
             // Локальная авторизация (fallback)
-            // Получаем сохранённые учётные данные или используем дефолтные
-            const savedCredentials = localStorage.getItem('bso_admin_credentials');
-            const credentials = savedCredentials ? JSON.parse(savedCredentials) : DEFAULT_CREDENTIALS;
-            
-            if (username === credentials.username && password === credentials.password) {
+            const admins = getLocalAdmins();
+            const matched = admins.find(user => user.username === username && user.password === password);
+
+            if (matched) {
                 setAuthData({
                     isLoggedIn: true,
-                    user: { name: 'Администратор', username: username, role: 'admin' }
+                    user: { name: matched.name || 'Администратор', username: matched.username, role: matched.role || 'admin' }
                 });
-                showAdminPanel({ name: 'Администратор' });
+                showAdminPanel({ name: matched.name || 'Администратор' });
             } else {
                 errorEl.textContent = 'Неверный логин или пароль';
                 errorEl.classList.add('show');
@@ -957,16 +1000,26 @@
             }
             
             // Локальная смена пароля
-            const savedCredentials = localStorage.getItem('bso_admin_credentials');
-            const credentials = savedCredentials ? JSON.parse(savedCredentials) : DEFAULT_CREDENTIALS;
-            
-            if (currentPassword !== credentials.password) {
+            const auth = getAuthData();
+            if (!auth?.user?.username) {
+                alert('Не удалось определить пользователя');
+                return;
+            }
+
+            const admins = getLocalAdmins();
+            const index = admins.findIndex(user => user.username === auth.user.username);
+            if (index === -1) {
+                alert('Пользователь не найден');
+                return;
+            }
+
+            if (currentPassword !== admins[index].password) {
                 alert('Неверный текущий пароль');
                 return;
             }
-            
-            credentials.password = newPassword;
-            localStorage.setItem('bso_admin_credentials', JSON.stringify(credentials));
+
+            admins[index].password = newPassword;
+            saveLocalAdmins(admins);
             alert('Пароль успешно изменён');
             document.getElementById('change-password-form').reset();
         }
