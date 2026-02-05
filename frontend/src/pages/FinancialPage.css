@@ -1,0 +1,15 @@
+.selected {
+  background-color: #e3f2fd !important;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.form-control-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
