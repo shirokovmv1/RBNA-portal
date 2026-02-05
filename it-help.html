@@ -75,6 +75,10 @@
                         </h2>
                     </div>
                     <div class="card-body">
+                        <div class="alert alert-warning" style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; border-radius: 4px; margin-bottom: 20px; color: #856404;">
+                            <strong>⚠️ Внимание:</strong> Отправляя заявку, вы соглашаетесь с обработкой персональных данных. 
+                            Данные будут переданы в ИТ отдел и могут быть использованы для решения вашей проблемы.
+                        </div>
                         <form id="helpdesk-form" onsubmit="return false;">
                             <div class="dashboard-grid">
                                 <div class="form-group">
@@ -197,8 +201,7 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-    <script src="app.js?v=20260120-3"></script>
+    <!-- PDF генерация теперь выполняется на сервере для безопасности данных -->
+    <script src="app.js?v=20260203-1"></script>
 </body>
 </html>

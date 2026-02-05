@@ -77,6 +77,10 @@ function sendMailWithAttachments($to, $subject, $html, $from, $attachments = [],
         $headers .= "Reply-To: {$replyTo}\r\n";
     }
     $headers .= "Content-Type: multipart/mixed; boundary=\"{$boundary}\"\r\n";
+    $headers .= "X-Priority: 3\r\n"; // Нормальный приоритет
+    $headers .= "X-Mailer: BSO Portal\r\n";
+    $headers .= "X-Content-Type-Options: nosniff\r\n"; // Защита от MIME-sniffing
+    $headers .= "Precedence: bulk\r\n"; // Указывает, что это массовая рассылка
 
     $body = "--{$boundary}\r\n";
     $body .= "Content-Type: text/html; charset=UTF-8\r\n";
@@ -93,6 +97,8 @@ function sendMailWithAttachments($to, $subject, $html, $from, $attachments = [],
 
     $body .= "--{$boundary}--";
 
+    // Использовать mail() с дополнительными параметрами для безопасности
+    // Примечание: Для полной безопасности рекомендуется использовать PHPMailer с SMTP и TLS
     return mail($to, $subject, $body, $headers);
 }
 

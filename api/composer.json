@@ -1,0 +1,12 @@
+{
+    "name": "bso-portal/api",
+    "description": "BSO Portal API dependencies",
+    "type": "project",
+    "require": {
+        "php": ">=7.0",
+        "tecnickcom/tcpdf": "^6.6"
+    },
+    "config": {
+        "vendor-dir": "vendor"
+    }
+}

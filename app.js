@@ -2755,34 +2755,82 @@ async function handleContactsImport(event) {
 }
 
 async function exportContactsCsv() {
-    const contacts = await dataManager.getContacts();
-    const header = [
-        '№',
-        'Ф.И.О.',
-        'Должность',
-        'Компания',
-        'Внутренний номер',
-        'Дата рождения',
-        'Контактный телефон',
-        'E-mail'
-    ];
-    const rows = [header.join(';')];
-    contacts.forEach((contact, index) => {
-        rows.push([
-            index + 1,
-            csvEscape(contact.name),
-            csvEscape(contact.position),
-            csvEscape(contact.company || ''),
-            csvEscape(contact.internalNumber || ''),
-            csvEscape(contact.birthDate || ''),
-            csvEscape(contact.phone),
-            csvEscape(contact.email)
-        ].join(';'));
-    });
+    // Проверка авторизации
+    const token = getAuthToken();
+    if (!token && CONFIG.useServerStorage) {
+        alert('Необходима авторизация для экспорта контактов');
+        return;
+    }
 
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    downloadBlob(blob, 'contacts.csv');
+    // Подтверждение с предупреждением о конфиденциальности
+    const confirmed = confirm(
+        '⚠️ ВНИМАНИЕ: Вы собираетесь экспортировать персональные данные сотрудников.\n\n' +
+        'Экспортированные данные содержат конфиденциальную информацию и должны храниться в соответствии с политикой безопасности компании.\n\n' +
+        'Продолжить экспорт?'
+    );
+    
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        // Логирование экспорта на сервере (если используется сервер)
+        if (CONFIG.useServerStorage && token) {
+            try {
+                await fetch(`${CONFIG.apiUrl}/audit.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        action: 'export_contacts',
+                        timestamp: new Date().toISOString(),
+                        details: {
+                            contactCount: (await dataManager.getContacts()).length
+                        }
+                    }),
+                    credentials: 'same-origin'
+                });
+            } catch (auditError) {
+                console.warn('Не удалось залогировать экспорт:', auditError);
+                // Продолжаем экспорт даже если логирование не удалось
+            }
+        }
+
+        const contacts = await dataManager.getContacts();
+        const header = [
+            '№',
+            'Ф.И.О.',
+            'Должность',
+            'Компания',
+            'Внутренний номер',
+            'Дата рождения',
+            'Контактный телефон',
+            'E-mail'
+        ];
+        const rows = [header.join(';')];
+        contacts.forEach((contact, index) => {
+            rows.push([
+                index + 1,
+                csvEscape(contact.name),
+                csvEscape(contact.position),
+                csvEscape(contact.company || ''),
+                csvEscape(contact.internalNumber || ''),
+                csvEscape(contact.birthDate || ''),
+                csvEscape(contact.phone),
+                csvEscape(contact.email)
+            ].join(';'));
+        });
+
+        const bom = '\uFEFF';
+        const dateStr = new Date().toISOString().split('T')[0];
+        const blob = new Blob([bom + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        downloadBlob(blob, `contacts_${dateStr}.csv`);
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        alert('Ошибка экспорта контактов');
+    }
 }
 
 // FAQ
@@ -3153,6 +3201,8 @@ function validateHelpdeskData(data) {
     return true;
 }
 
+// УСТАРЕВШАЯ ФУНКЦИЯ: Генерация PDF теперь выполняется на сервере для безопасности
+// Эта функция оставлена для совместимости, но не используется
 function buildHelpdeskPdfDefinition(data) {
     return {
         content: [
@@ -3202,9 +3252,40 @@ async function saveHelpdeskPdf() {
     const data = getHelpdeskFormData();
     if (!validateHelpdeskData(data)) return;
 
-    const docDefinition = buildHelpdeskPdfDefinition(data);
-    const fileName = `helpdesk_${data.requestNumber}.pdf`;
-    pdfMake.createPdf(docDefinition).download(fileName);
+    if (!CONFIG.useServerStorage) {
+        alert('Серверная генерация PDF недоступна в локальном режиме.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${CONFIG.apiUrl}/helpdesk-pdf.php`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Ошибка генерации PDF');
+        }
+
+        // Получаем PDF как blob
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `helpdesk_${data.requestNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Ошибка генерации PDF:', error);
+        alert('Ошибка генерации PDF: ' + (error.message || 'Попробуйте еще раз.'));
+    }
 }
 
 async function sendHelpdeskRequest() {
@@ -3224,53 +3305,78 @@ async function sendHelpdeskRequest() {
         sendBtn.textContent = 'Отправка...';
     }
 
-    const docDefinition = buildHelpdeskPdfDefinition(data);
-    pdfMake.createPdf(docDefinition).getBase64(async (pdfBase64) => {
-        try {
-            const formData = new FormData();
-            formData.append('requestNumber', data.requestNumber);
-            formData.append('createdAt', data.createdAt);
-            formData.append('name', data.name);
-            formData.append('email', data.email);
-            formData.append('phone', data.phone);
-            formData.append('category', data.category);
-            formData.append('anydesk', data.anydesk);
-            formData.append('description', data.description);
-            formData.append('pdfBase64', pdfBase64);
+    try {
+        // Генерируем PDF на сервере и получаем base64
+        const pdfResponse = await fetch(`${CONFIG.apiUrl}/helpdesk-pdf.php?format=base64`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data),
+            credentials: 'same-origin'
+        });
 
-            const fileInput = document.getElementById('helpdesk-attachment');
-            if (fileInput?.files?.[0]) {
-                const file = fileInput.files[0];
-                if (file.size > HELP_DESK_MAX_FILE_SIZE) {
-                    openModal('helpdesk-file-size-modal');
-                    return;
-                }
-                formData.append('attachment', file);
-            }
-
-            const response = await fetch(`${CONFIG.apiUrl}/helpdesk.php?action=submit`, {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin'
-            });
-
-            const result = await response.json();
-            if (response.ok && result.success) {
-                alert(`Заявка отправлена. Номер: ${result.requestNumber}`);
-                document.getElementById('helpdesk-form').reset();
-                await initHelpdeskForm();
-            } else {
-                alert(result.error || 'Ошибка отправки заявки');
-            }
-        } catch (error) {
-            alert('Ошибка отправки заявки');
-        } finally {
-            if (sendBtn) {
-                sendBtn.disabled = false;
-                sendBtn.textContent = '📤 Отправить заявку';
-            }
+        if (!pdfResponse.ok) {
+            const errorData = await pdfResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Ошибка генерации PDF');
         }
-    });
+
+        const pdfResult = await pdfResponse.json();
+        const pdfBase64 = pdfResult.pdfBase64;
+
+        if (!pdfBase64) {
+            throw new Error('Не удалось получить PDF');
+        }
+
+        // Отправляем заявку с PDF
+        const formData = new FormData();
+        formData.append('requestNumber', data.requestNumber);
+        formData.append('createdAt', data.createdAt);
+        formData.append('name', data.name);
+        formData.append('email', data.email);
+        formData.append('phone', data.phone);
+        formData.append('category', data.category);
+        formData.append('anydesk', data.anydesk);
+        formData.append('description', data.description);
+        formData.append('pdfBase64', pdfBase64);
+
+        const fileInput = document.getElementById('helpdesk-attachment');
+        if (fileInput?.files?.[0]) {
+            const file = fileInput.files[0];
+            if (file.size > HELP_DESK_MAX_FILE_SIZE) {
+                openModal('helpdesk-file-size-modal');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = '📤 Отправить заявку';
+                }
+                return;
+            }
+            formData.append('attachment', file);
+        }
+
+        const response = await fetch(`${CONFIG.apiUrl}/helpdesk.php?action=submit`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        });
+
+        const result = await response.json();
+        if (response.ok && result.success) {
+            alert(`Заявка отправлена. Номер: ${result.requestNumber}`);
+            document.getElementById('helpdesk-form').reset();
+            await initHelpdeskForm();
+        } else {
+            alert(result.error || 'Ошибка отправки заявки');
+        }
+    } catch (error) {
+        console.error('Ошибка отправки заявки:', error);
+        alert('Ошибка отправки заявки: ' + (error.message || 'Попробуйте еще раз.'));
+    } finally {
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = '📤 Отправить заявку';
+        }
+    }
 }
 
 // ============================================

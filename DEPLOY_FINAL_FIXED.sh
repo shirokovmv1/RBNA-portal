@@ -1,0 +1,297 @@
+#!/bin/bash
+# ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ - с улучшенной проверкой структуры проекта
+set -e
+
+DOMAIN="151.245.137.147"
+GIT_REPO="https://github.com/shirokovmv1/RBNA-portal.git"
+
+echo "🚀 Развертывание RBNA Portal на $DOMAIN"
+echo "========================================"
+
+if [ "$EUID" -ne 0 ]; then 
+    echo "⚠️  Запустите скрипт с sudo или от root"
+    exit 1
+fi
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+print_step() {
+    echo -e "${GREEN}[ШАГ $1]${NC} $2"
+}
+
+DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+
+print_step "1" "Обновление системы..."
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq && apt-get upgrade -y -qq
+
+print_step "2" "Установка зависимостей..."
+apt-get install -y -qq python3 python3-pip python3-venv python3-dev postgresql postgresql-contrib nginx git build-essential libssl-dev libffi-dev ufw curl wget openssl
+
+print_step "3" "Установка Node.js..."
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash - > /dev/null 2>&1
+apt-get install -y -qq nodejs
+
+print_step "4" "Создание пользователя rbna..."
+if ! id "rbna" &>/dev/null; then
+    adduser --disabled-password --gecos "" rbna
+    usermod -aG sudo rbna
+    echo "rbna ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+fi
+
+print_step "5" "Настройка PostgreSQL..."
+systemctl start postgresql > /dev/null 2>&1
+systemctl enable postgresql > /dev/null 2>&1
+
+sudo -u postgres psql <<EOF > /dev/null 2>&1
+SELECT 'CREATE DATABASE rbna_portal' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'rbna_portal')\gexec
+DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'rbna_user') THEN CREATE USER rbna_user WITH PASSWORD '$DB_PASSWORD'; END IF; END \$\$;
+ALTER ROLE rbna_user SET client_encoding TO 'utf8';
+ALTER ROLE rbna_user SET default_transaction_isolation TO 'read committed';
+ALTER ROLE rbna_user SET timezone TO 'UTC';
+GRANT ALL PRIVILEGES ON DATABASE rbna_portal TO rbna_user;
+\q
+EOF
+
+print_step "6" "Настройка файрвола..."
+ufw --force enable > /dev/null 2>&1
+ufw allow 22/tcp > /dev/null 2>&1 && ufw allow 80/tcp > /dev/null 2>&1 && ufw allow 443/tcp > /dev/null 2>&1
+
+print_step "7" "Создание директорий..."
+mkdir -p /home/rbna/rbna-portal/{backend,frontend,logs}
+chown -R rbna:rbna /home/rbna/rbna-portal
+
+cat > /home/rbna/rbna-portal/credentials.txt <<CREDEOF
+===========================================
+RBNA Portal - Учетные данные
+===========================================
+База данных:
+  Имя БД: rbna_portal
+  Пользователь: rbna_user
+  Пароль: $DB_PASSWORD
+===========================================
+CREDEOF
+chown rbna:rbna /home/rbna/rbna-portal/credentials.txt
+chmod 600 /home/rbna/rbna-portal/credentials.txt
+
+print_step "8" "Клонирование проекта из Git..."
+su - rbna <<RBNA_EOF
+cd /home/rbna
+if [ -d "rbna-portal/.git" ]; then
+    echo "Обновление существующего репозитория..."
+    cd rbna-portal && git pull
+elif [ -d "rbna-portal" ]; then
+    echo "Удаление существующей директории (не git репозиторий)..."
+    rm -rf rbna-portal && git clone $GIT_REPO rbna-portal
+else
+    echo "Клонирование репозитория..."
+    git clone $GIT_REPO rbna-portal
+fi
+RBNA_EOF
+
+# Улучшенная проверка структуры проекта
+sleep 2
+echo "Проверка структуры проекта..."
+if [ ! -d "/home/rbna/rbna-portal" ]; then
+    echo "❌ Ошибка: Директория /home/rbna/rbna-portal не найдена!"
+    exit 1
+fi
+
+echo "Содержимое /home/rbna/rbna-portal:"
+ls -la /home/rbna/rbna-portal/ | head -15
+
+# Проверка и создание директорий если их нет
+if [ ! -d "/home/rbna/rbna-portal/backend" ]; then
+    echo -e "${YELLOW}⚠️  Директория backend не найдена. Проверяю структуру репозитория...${NC}"
+    # Возможно, проект имеет другую структуру
+    if [ -d "/home/rbna/rbna-portal" ]; then
+        echo "Создаю директорию backend..."
+        mkdir -p /home/rbna/rbna-portal/backend
+        chown -R rbna:rbna /home/rbna/rbna-portal/backend
+    fi
+fi
+
+if [ ! -d "/home/rbna/rbna-portal/frontend" ]; then
+    echo -e "${YELLOW}⚠️  Директория frontend не найдена. Проверяю структуру репозитория...${NC}"
+    if [ -d "/home/rbna/rbna-portal" ]; then
+        echo "Создаю директорию frontend..."
+        mkdir -p /home/rbna/rbna-portal/frontend
+        chown -R rbna:rbna /home/rbna/rbna-portal/frontend
+    fi
+fi
+
+print_step "9" "Настройка Backend..."
+
+su - rbna <<RBNA_EOF
+cd /home/rbna/rbna-portal
+# Если backend существует в репозитории, используем его
+if [ -d "backend" ] && [ -f "backend/manage.py" ]; then
+    cd backend
+else
+    # Если структура другая, создаем backend
+    if [ ! -d "backend" ]; then
+        mkdir -p backend
+    fi
+    cd backend
+    # Проверяем, есть ли manage.py в корне репозитория
+    if [ -f "../manage.py" ]; then
+        echo "Найдена структура Django в корне репозитория"
+        # Копируем файлы Django в backend
+        cp -r ../* . 2>/dev/null || true
+    fi
+fi
+
+if [ ! -d "venv" ]; then python3 -m venv venv; fi
+source venv/bin/activate
+pip install --upgrade pip -q
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt -q
+else
+    echo "⚠️  requirements.txt не найден, устанавливаю базовые пакеты..."
+    pip install django djangorestframework django-cors-headers python-dateutil gunicorn psycopg2-binary -q
+fi
+pip install gunicorn psycopg2-binary -q
+SECRET_KEY=\$(python manage.py shell -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())" 2>/dev/null || echo "django-insecure-temp-key-change-in-production")
+cat > .env <<ENVEOF
+SECRET_KEY=\$SECRET_KEY
+DEBUG=False
+ALLOWED_HOSTS=$DOMAIN,151.245.137.147
+CORS_ALLOWED_ORIGINS=http://$DOMAIN,https://$DOMAIN
+SECURE_SSL_REDIRECT=False
+DB_NAME=rbna_portal
+DB_USER=rbna_user
+DB_PASSWORD=$DB_PASSWORD
+DB_HOST=localhost
+DB_PORT=5432
+ENVEOF
+python3 << 'PYEOF'
+import re
+import os
+if os.path.exists('rbnaportal/settings.py'):
+    with open('rbnaportal/settings.py', 'r') as f: content = f.read()
+    new_db = """DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME', 'rbna_portal'),
+            'USER': os.environ.get('DB_USER', 'rbna_user'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+        }
+    }"""
+    pattern = r'DATABASES\s*=\s*\{[^}]+\}'
+    content = re.sub(pattern, new_db, content, flags=re.DOTALL)
+    with open('rbnaportal/settings.py', 'w') as f: f.write(content)
+PYEOF
+if [ -f "manage.py" ]; then
+    python manage.py migrate --noinput
+    python manage.py collectstatic --noinput
+fi
+cat > gunicorn_config.py <<GUNICORNEOF
+import multiprocessing
+bind = "127.0.0.1:8000"
+workers = multiprocessing.cpu_count() * 2 + 1
+worker_class = "sync"
+timeout = 120
+keepalive = 5
+max_requests = 1000
+max_requests_jitter = 50
+user = "rbna"
+group = "rbna"
+logfile = "/home/rbna/rbna-portal/logs/gunicorn.log"
+loglevel = "info"
+GUNICORNEOF
+RBNA_EOF
+
+print_step "10" "Создание systemd сервиса..."
+tee /etc/systemd/system/rbna-portal.service > /dev/null <<EOF
+[Unit]
+Description=RBNA Portal Gunicorn daemon
+After=network.target postgresql.service
+[Service]
+User=rbna
+Group=rbna
+WorkingDirectory=/home/rbna/rbna-portal/backend
+Environment="PATH=/home/rbna/rbna-portal/backend/venv/bin"
+ExecStart=/home/rbna/rbna-portal/backend/venv/bin/gunicorn --config /home/rbna/rbna-portal/backend/gunicorn_config.py rbnaportal.wsgi:application
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable rbna-portal
+systemctl start rbna-portal
+
+print_step "11" "Сборка Frontend..."
+su - rbna <<RBNA_EOF
+cd /home/rbna/rbna-portal
+if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+    cd frontend
+else
+    if [ ! -d "frontend" ]; then
+        mkdir -p frontend
+    fi
+    cd frontend
+    # Если package.json в корне, копируем файлы
+    if [ -f "../package.json" ]; then
+        cp -r ../* . 2>/dev/null || true
+    fi
+fi
+cat > .env.production <<ENVEOF
+REACT_APP_API_URL=http://$DOMAIN/api
+ENVEOF
+if [ -f "package.json" ]; then
+    npm install --legacy-peer-deps --silent
+    npm run build
+else
+    echo "⚠️  package.json не найден, пропускаю сборку frontend"
+fi
+RBNA_EOF
+
+print_step "12" "Настройка Nginx..."
+tee /etc/nginx/sites-available/rbna-portal > /dev/null <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+    client_max_body_size 10M;
+    location / {
+        root /home/rbna/rbna-portal/frontend/build;
+        try_files \$uri \$uri/ /index.html;
+    }
+    location /static/ {
+        alias /home/rbna/rbna-portal/backend/staticfiles/;
+    }
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect off;
+    }
+    location /admin/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+ln -sf /etc/nginx/sites-available/rbna-portal /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
+
+echo ""
+echo "=========================================="
+echo -e "${GREEN}✅ Развертывание завершено!${NC}"
+echo "=========================================="
+echo ""
+echo "🌐 Приложение доступно: http://$DOMAIN"
+echo "🔐 Админка Django: http://$DOMAIN/admin/"
+echo "📝 Учетные данные БД: /home/rbna/rbna-portal/credentials.txt"
+echo ""
