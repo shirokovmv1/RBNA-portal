@@ -84,12 +84,8 @@ WSGI_APPLICATION = 'rbnaportal.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'rbna_portal'),
-        'USER': os.environ.get('DB_USER', 'rbna_user'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -176,6 +172,7 @@ if not DEBUG:
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Настройки логирования пользовательских действий
+_LOG_DIR = os.environ.get('LOG_DIR', str(BASE_DIR.parent / 'logs'))
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -193,7 +190,7 @@ LOGGING = {
         'file_user_actions': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': '/home/rbna/rbna-portal/logs/user_actions.log',
+            'filename': os.path.join(_LOG_DIR, 'user_actions.log'),
             'maxBytes': 10 * 1024 * 1024,
             'backupCount': 10,
             'formatter': 'json',
@@ -202,7 +199,7 @@ LOGGING = {
         'file_errors': {
             'level': 'ERROR',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': '/home/rbna/rbna-portal/logs/errors.log',
+            'filename': os.path.join(_LOG_DIR, 'errors.log'),
             'maxBytes': 10 * 1024 * 1024,
             'backupCount': 10,
             'formatter': 'verbose',
